@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Life Garden - ライフゲーム箱庭</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+
+  <!-- X（Twitter）カード用の軽いメタ（必要に応じて編集） -->
+  <meta name="description" content="ライフゲームで遊ぶ箱庭ゲーム。パターンを植えてスコアを伸ばそう。" />
+  <meta property="og:title" content="Life Garden - ライフゲーム箱庭" />
+  <meta property="og:description" content="ライフゲームで遊ぶ箱庭ゲーム。Xでスコア共有もできます。" />
+  <!-- 公開URLに合わせて書き換え -->
+  <meta property="og:url" content="https://your-name.github.io/life-garden/" />
+  <meta property="og:type" content="website" />
+
+  <!-- ▼▼ AdSense グローバルスクリプト（自分の ca-pub に書き換え） ▼▼ -->
+  <!-- 審査用コードで別スクリプトが指定されている場合は、AdSenseダッシュボードの指示を優先 -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
+    crossorigin="anonymous"></script>
+  <!-- ▲▲ ここまで AdSense グローバルスクリプト ▲▲ -->
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0.5rem;
+      background: #111;
+      color: #eee;
+      box-sizing: border-box;
+    }
+    * { box-sizing: inherit; }
+    h1 {
+      font-size: 1rem;
+      margin: 0.2rem 0 0.4rem;
+    }
+    #canvasContainer {
+      width: 100%;
+      max-width: 380px;
+      margin: 0.2rem auto 0.4rem;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      background: #000;
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid #555;
+    }
+    #info, #statusBox {
+      font-size: 0.75rem;
+      margin: 0.2rem 0 0.4rem;
+      line-height: 1.4;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      margin: 0.4rem 0;
+    }
+    button, select {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 4px;
+      border: none;
+      background: #333;
+      color: #eee;
+      flex: 1 1 30%;
+      min-width: 30%;
+    }
+    button:active {
+      transform: scale(0.97);
+      background: #555;
+    }
+    select {
+      background: #222;
+    }
+    .ad-slot {
+      margin: 0.4rem 0;
+      text-align: center;
+    }
+    .ad-slot small {
+      display: block;
+      font-size: 0.6rem;
+      color: #777;
+      margin-bottom: 0.1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Life Garden - ライフゲーム箱庭</h1>
+
+  <div id="info">
+    ・自動でライフゲームが進行する「庭」。<br />
+    ・タップすると「種パターン」を植えられる（下のセレクトで種類変更）。<br />
+    ・前の世代から変化したセルの数が「活動量」になり、スコアに加算。<br />
+    ・盤面がループしたり、ほぼ変化しなくなったら一時停止。<br />
+    ・種が残っていれば、種をまいてから再開して続きが遊べる。<br /><br />
+    ステップ: <span id="step">0</span><br />
+    今ステップの活動量: <span id="activity">0</span><br />
+    合計スコア: <span id="score">0</span><br />
+    ベストスコア: <span id="best">0</span><br />
+    残りの種: <span id="seedsLeft">0</span>
+  </div>
+
+  <!-- ▼▼ 上部広告枠（レイアウト次第で位置は調整してOK） ▼▼ -->
+  <div class="ad-slot">
+    <small>スポンサーリンク</small>
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"  <!-- 自分のID -->
+         data-ad-slot="YYYYYYYYYY"                <!-- 自分のスロットID -->
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+  </div>
+  <!-- ▲▲ 上部広告枠 ▲▲ -->
+
+  <div id="canvasContainer">
+    <canvas id="lifeCanvas" width="360" height="360"></canvas>
+  </div>
+
+  <div class="controls">
+    <button id="startStop">一時停止</button>
+    <button id="newRun">新しいラン</button>
+    <button id="clearAll">完全クリア</button>
+    <button id="shareX">Xで共有</button>
+  </div>
+
+  <div class="controls">
+    <select id="patternSelect">
+      <option value="dot">● 単セル（ちょっとした刺激）</option>
+      <option value="glider">▶ グライダーっぽい種</option>
+      <option value="exploder">★ 爆発系の種</option>
+      <option value="block">■ 安定ブロック</option>
+    </select>
+  </div>
+
+  <div id="statusBox">
+    状態: <span id="statusText">準備中。「新しいラン」で開始、キャンバスをタップして種をまいてね。</span>
+  </div>
+
+  <!-- AdSense 初回ロード -->
+  <script>
+    try {
+      (adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      // 広告ブロックなどでエラーになる場合もあるので握りつぶす
+    }
+  </script>
+
+  <script>
+    // ===== 基本設定 =====
+    const COLS = 30;
+    const ROWS = 30;
+    const canvas = document.getElementById('lifeCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const EMPTY = 0;
+    const ALIVE = 1;
+
+    // ライフゲーム標準ルール B3/S23
+    const BIRTH = [3];
+    const SURVIVE = [2, 3];
+
+    // ゲーム的なパラメータ
+    const STEP_INTERVAL = 120;          // ms
+    const MAX_IDLE_STEPS = 30;         // 活動量0が連続したら終了候補
+    const MAX_SEEDS_PER_RUN = 40;      // 1ランで植えられる種の数
+    const MAX_RECENT_CONFIGS = 65536;  // 直近状態数（2^16 ≒ 2時間分）
+
+    // 状態
+    let grid = createEmptyGrid();
+    let running = true;
+    let timerId = null;
+
+    let stepCount = 0;
+    let totalScore = 0;
+    let bestScore = 0;
+    let lastActivity = 0;
+    let idleSteps = 0;
+    let seedsLeft = MAX_SEEDS_PER_RUN;
+
+    // このランが完全終了したかどうか
+    let finished = false;
+    // ループ or 停滞で一時停止中で、種による介入待ちかどうか
+    let needsIntervention = false;
+
+    // ループ検出用：直近の盤面ハッシュ
+    /** @type {number[]} */
+    let recentConfigs = [];
+    /** @type {Set<number>} */
+    let recentConfigSet = new Set();
+
+    const stepSpan   = document.getElementById('step');
+    const activitySpan = document.getElementById('activity');
+    const scoreSpan  = document.getElementById('score');
+    const bestSpan   = document.getElementById('best');
+    const seedsSpan  = document.getElementById('seedsLeft');
+    const statusText = document.getElementById('statusText');
+    const startStopBtn = document.getElementById('startStop');
+
+    // ===== グリッド関連 =====
+    function createEmptyGrid() {
+      const g = [];
+      for (let y = 0; y < ROWS; y++) {
+        const row = new Array(COLS).fill(EMPTY);
+        g.push(row);
+      }
+      return g;
+    }
+
+    function countNeighbors(g, x, y) {
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+          if (g[ny][nx] === ALIVE) count++;
+        }
+      }
+      return count;
+    }
+
+    // 32bit FNV-1a ハッシュで盤面を1つの number に圧縮
+    function gridHash32(g) {
+      let h = 2166136261 >>> 0; // FNV-1a 初期値
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const v = g[y][x]; // 0 or 1
+          h ^= v & 0xff;
+          h = Math.imul(h, 16777619);
+          h >>>= 0;
+        }
+      }
+      return h;
+    }
+
+    function resetLoopTracking() {
+      recentConfigs = [];
+      recentConfigSet = new Set();
+      const sig = gridHash32(grid);
+      recentConfigs.push(sig);
+      recentConfigSet.add(sig);
+    }
+
+    // ===== 1ステップ進める（活動量計算＋ループ検出） =====
+    function stepOnce() {
+      if (finished) return;
+
+      const next = createEmptyGrid();
+      let activity = 0;
+
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const alive = grid[y][x] === ALIVE;
+          const n = countNeighbors(grid, x, y);
+          let nextState;
+
+          if (alive) {
+            nextState = SURVIVE.includes(n) ? ALIVE : EMPTY;
+          } else {
+            nextState = BIRTH.includes(n) ? ALIVE : EMPTY;
+          }
+
+          if (nextState !== grid[y][x]) {
+            activity++;
+          }
+          next[y][x] = nextState;
+        }
+      }
+
+      grid = next;
+      stepCount++;
+      lastActivity = activity;
+      totalScore += activity;
+
+      if (activity === 0) {
+        idleSteps++;
+      } else {
+        idleSteps = 0;
+      }
+
+      updateInfo();
+      drawGrid();
+
+      // --- 終了 or 一時停止 判定 1: 活動ゼロが続いた ---
+      if (idleSteps >= MAX_IDLE_STEPS) {
+        if (seedsLeft > 0) {
+          stopLoop();
+          needsIntervention = true;
+          statusText.textContent = 'ほとんど動かなくなったので一時停止しました。種をまいてから再開してください。';
+          return;
+        } else {
+          endRun('活動がほとんどなくなったため終了しました。');
+          return;
+        }
+      }
+
+      // --- 終了 or 一時停止 判定 2: 直近状態とのループ ---
+      const sig = gridHash32(grid);
+      if (recentConfigSet.has(sig)) {
+        if (seedsLeft > 0) {
+          stopLoop();
+          needsIntervention = true;
+          statusText.textContent = '盤面がループしたため一時停止しました。種をまいてから再開してください。';
+          return;
+        } else {
+          endRun('盤面がループしたため終了しました。');
+          return;
+        }
+      }
+      recentConfigs.push(sig);
+      recentConfigSet.add(sig);
+      if (recentConfigs.length > MAX_RECENT_CONFIGS) {
+        const old = recentConfigs.shift();
+        recentConfigSet.delete(old);
+      }
+    }
+
+    // ===== 描画 =====
+    function drawGrid() {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const cellW = canvas.width / COLS;
+      const cellH = canvas.height / ROWS;
+
+      ctx.fillStyle = '#00c8ff';
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          if (grid[y][x] === ALIVE) {
+            ctx.fillRect(
+              x * cellW + 1,
+              y * cellH + 1,
+              cellW - 2,
+              cellH - 2
+            );
+          }
+        }
+      }
+
+      // グリッド線
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= COLS; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cellW, 0);
+        ctx.lineTo(x * cellW, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= ROWS; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cellH);
+        ctx.lineTo(canvas.width, y * cellH);
+        ctx.stroke();
+      }
+    }
+
+    function updateInfo() {
+      stepSpan.textContent = stepCount;
+      activitySpan.textContent = lastActivity;
+      scoreSpan.textContent = totalScore;
+      bestSpan.textContent = bestScore;
+      seedsSpan.textContent = seedsLeft;
+    }
+
+    // ===== ラン制御 =====
+    function startLoop() {
+      if (finished) {
+        statusText.textContent = 'このランは終了しています。「新しいラン」を押して再スタートしてください。';
+        return;
+      }
+      if (needsIntervention) {
+        statusText.textContent = 'ループ/停止状態です。種をまいてから再開してください。';
+        return;
+      }
+      if (timerId !== null) return;
+      running = true;
+      startStopBtn.textContent = '一時停止';
+      timerId = setInterval(stepOnce, STEP_INTERVAL);
+    }
+
+    function stopLoop() {
+      running = false;
+      startStopBtn.textContent = '再開';
+      if (timerId !== null) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    function resetRun(clearField = true) {
+      stopLoop();
+      if (clearField) {
+        grid = createEmptyGrid();
+      }
+      stepCount = 0;
+      totalScore = 0;
+      lastActivity = 0;
+      idleSteps = 0;
+      seedsLeft = MAX_SEEDS_PER_RUN;
+      finished = false;
+      needsIntervention = false;
+      resetLoopTracking();
+      updateInfo();
+      drawGrid();
+      statusText.textContent = '新しいランを開始。キャンバスをタップして種をまいてね。';
+      startLoop();
+    }
+
+    function endRun(reason) {
+      stopLoop();
+      finished = true;
+      needsIntervention = false;
+      if (totalScore > bestScore) {
+        bestScore = totalScore;
+      }
+      updateInfo();
+      statusText.textContent =
+        reason + ' スコア: ' + totalScore +
+        ' （ベスト: ' + bestScore + '） 「新しいラン」で再スタートできます。';
+    }
+
+    // ===== パターン（種）定義 =====
+    const PATTERNS = {
+      dot: [
+        [0, 0]
+      ],
+      glider: [
+        [0, -1], [1, 0], [-1, 1], [0, 1], [1, 1]
+      ],
+      exploder: [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0],           [1, 0],
+        [-1, 1],  [0, 1],  [1, 1]
+      ],
+      block: [
+        [0, 0], [1, 0],
+        [0, 1], [1, 1]
+      ]
+    };
+
+    function placePattern(cx, cy, kind) {
+      if (seedsLeft <= 0) return;
+      const pts = PATTERNS[kind] || PATTERNS.dot;
+      for (const [dx, dy] of pts) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
+        grid[y][x] = ALIVE;
+      }
+      seedsLeft--;
+      needsIntervention = false;
+      idleSteps = 0;
+      resetLoopTracking();
+      updateInfo();
+      drawGrid();
+    }
+
+    // ===== キャンバスタップで種を配置 =====
+    function handleTap(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const cellW = rect.width / COLS;
+      const cellH = rect.height / ROWS;
+
+      const x = Math.floor((clientX - rect.left) / cellW);
+      const y = Math.floor((clientY - rect.top) / cellH);
+      if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+
+      if (seedsLeft <= 0) {
+        statusText.textContent = '種がもうありません。このランは眺めるだけになります。「新しいラン」でリセットできます。';
+        return;
+      }
+
+      const kind = document.getElementById('patternSelect').value;
+      placePattern(x, y, kind);
+    }
+
+    canvas.addEventListener('click', (e) => {
+      handleTap(e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      handleTap(t.clientX, t.clientY);
+      e.preventDefault();
+    }, { passive: false });
+
+    // ===== X（Twitter）共有 =====
+    function shareToX() {
+      // 公開URLに合わせて書き換え
+      const gameUrl = 'https://your-name.github.io/life-garden/';
+
+      const text = `Life Garden でスコア ${totalScore} を出しました！ #LifeGarden #GameOfLife`;
+      const encodedText = encodeURIComponent(text);
+      const encodedUrl  = encodeURIComponent(gameUrl);
+
+      const shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
+
+      window.open(shareUrl, '_blank');
+    }
+
+    // ===== ボタン =====
+    document.getElementById('startStop').addEventListener('click', () => {
+      if (running) {
+        stopLoop();
+        statusText.textContent = '一時停止中。タップで種をまいたり盤面を眺めたりできます。';
+      } else {
+        startLoop();
+        if (!finished && !needsIntervention && timerId !== null) {
+          statusText.textContent = '再開しました。活動量を伸ばしていこう。';
+        }
+      }
+    });
+
+    document.getElementById('newRun').addEventListener('click', () => {
+      resetRun(true);
+    });
+
+    document.getElementById('clearAll').addEventListener('click', () => {
+      stopLoop();
+      grid = createEmptyGrid();
+      stepCount = 0;
+      totalScore = 0;
+      lastActivity = 0;
+      idleSteps = 0;
+      seedsLeft = MAX_SEEDS_PER_RUN;
+      finished = false;
+      needsIntervention = false;
+      resetLoopTracking();
+      updateInfo();
+      drawGrid();
+      statusText.textContent = '完全クリアしました。タップで新しく庭を育ててください。';
+    });
+
+    document.getElementById('shareX').addEventListener('click', () => {
+      shareToX();
+    });
+
+    // ===== タブが非表示のときは負荷を下げる（お好みで） =====
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        stopLoop();
+      } else if (!finished && !needsIntervention) {
+        startLoop();
+      }
+    });
+
+    // ===== 初期化 =====
+    function init() {
+      grid = createEmptyGrid();
+      stepCount = 0;
+      totalScore = 0;
+      lastActivity = 0;
+      idleSteps = 0;
+      seedsLeft = MAX_SEEDS_PER_RUN;
+      finished = false;
+      needsIntervention = false;
+      resetLoopTracking();
+      updateInfo();
+      drawGrid();
+      statusText.textContent = '準備中。「新しいラン」で開始、キャンバスをタップして種をまいてね。';
+      startLoop();
+    }
+
+    init();
+  </script>
+</body>
+</html>
